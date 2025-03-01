@@ -124,13 +124,13 @@ The [RFC 6265 - HTTP State Management Mechanism](https://www.rfc-editor.org/rfc/
       *  The string is a host name (i.e., not an IP address).
 ```
 
-Okay, so *Host* define as IP address can't set cookie for next request... But clients and servers implement it.
+Okay, so *Host* define as IP address can't set cookie for next request... But clients and servers implements it.
 
 ##### Implementations
 
-Now check if we can exploit in few implentations:
+Now check if we can exploit in few implementations:
 
-1. Python and standard library (**not vulnerable**): Keep square brackets `[]` to validate the hostname ([code](https://github.com/python/cpython/blob/ddc27f9c385f57db1c227b655ec84dcf097a8976/Lib/http/cookiejar.py#L619)):
+1. Python and standard library (**not vulnerable**): Keep square brackets `[]` to validate the host ([code](https://github.com/python/cpython/blob/ddc27f9c385f57db1c227b655ec84dcf097a8976/Lib/http/cookiejar.py#L619)):
 
 ```python
 cut_port_re = re.compile(r":\d+$", re.ASCII)
@@ -286,10 +286,10 @@ We have three vulnerabilities exploited:
 
 1. XSS (steal user or administrator sessions)
 2. Log injection (hide malicious events, RCE with PHP or templating system, ...)
-3. Code injection (execute malicious code, in my demonstration it's a system command but similar vulnerabilities can exploit any other syntax: PHP, SQL, Javascript, Python, ...)
+3. Code injection (execute malicious code, in my demonstration it's a system command but similar vulnerabilities can use any other syntax: PHP, SQL, Javascript, Python, ...)
 
 ## Conclusion
 
  - **Don't trust any field including valid and parsed host or IP**
- - If you are a developper speak about this problems with your colleagues
+ - If you are a developper speak about these problems with your colleagues
  - If you are `DevSecOps` consider the *host* as an user input (even if you use a secure parser)
