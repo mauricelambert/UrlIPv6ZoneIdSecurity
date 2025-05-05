@@ -1,12 +1,30 @@
-# RFC 6874 - IPv6 Zone ID in URL
+# URL Host - Dangerous field
 
 ## Summary
 
-The [RFC 6874 - Representing IPv6 Zone Identifiers in Address Literals and Uniform Resource Identifiers](https://www.ietf.org/rfc/rfc6874.txt) add the support for [RFC 4007 - IPv6 Scoped Address Architecture](https://www.ietf.org/rfc/rfc4007.txt) in URI.
+1. The [RFC 3986 - Uniform Resource Identifier (URI): Generic Syntax](https://www.ietf.org/rfc/rfc3986.txt) define the generic URI syntax, with the host field and several formats and dangerous characters.
+2. The [RFC 6874 - Representing IPv6 Zone Identifiers in Address Literals and Uniform Resource Identifiers](https://www.ietf.org/rfc/rfc6874.txt) add the support for [RFC 4007 - IPv6 Scoped Address Architecture](https://www.ietf.org/rfc/rfc4007.txt) in URI.
 
-I think this RFC can generate few security problems and bugs because the ZoneID can contains many characters.
+I think these RFCs can cause security issues and bugs because the `host` field contains several formats, many of which accept dangerous characters:
+ - `IPvFuture` where `sub-delims` can be used and some implementations does not comply with the RFC 3986 and accept multiples other characters.
+ - `ZoneID` can contains many characters and some implementations does not comply with the RFC 6874 (comply only with RFC 4007).
 
 ## Context
+
+### IPvFuture
+
+In anticipation of future the [RFC 3986 - Uniform Resource Identifier (URI): Generic Syntax](https://www.ietf.org/rfc/rfc3986.txt) define the `IPvFuture` format:
+
+```
+ unreserved    = ALPHA / DIGIT / "-" / "." / "_" / "~"
+ sub-delims    = "!" / "$" / "&" / "'" / "(" / ")"
+                 / "*" / "+" / "," / ";" / "="
+ IPvFuture  = "v" 1*HEXDIG "." 1*( unreserved / sub-delims / ":" )
+```
+
+This format doesn't contain a character that allows parsing ambiguities but it contain many special characters.
+
+### IPv6
 
 The [RFC 3986 - Uniform Resource Identifier (URI): Generic Syntax](https://www.ietf.org/rfc/rfc3986.txt) use [RFC 3513 - Internet Protocol Version 6 (IPv6) Addressing Architecture](https://www.ietf.org/rfc/rfc3513.txt) to define the IPv6 as following:
 
@@ -31,29 +49,26 @@ The [RFC 3986 - Uniform Resource Identifier (URI): Generic Syntax](https://www.i
 The RFC 4007 define the support for a `ZoneID` concatened to IPv6 address format and the RFC 6874 update the RFC 3986 to support the `ZoneID` definition as following format:
 
 ```
+pct-encoded   = "%" HEXDIG HEXDIG
+unreserved    = ALPHA / DIGIT / "-" / "." / "_" / "~"
+ZoneID = 1*( unreserved / pct-encoded )
 IPv6addrz = IPv6address "%25" ZoneID
 ```
 
+This format doesn't contain many special characters, it doesn't contain a character that allows parsing ambiguities, but it does contain all the characters that allow you to write an fqdn.
+
 ## Problems
 
-The `host` element URI is an important element and is used for many usages:
-
- - Define where cookie or credentials should be sent
- - `Host` header in HTTP
- - *hostname* to identify server in logs (for example for a proxy)
- - Maybe in some web page
- - In unsecure code evaluated
-
-### Why
-
- - For many developpers the *hostname* is trust because: the hostname is very simple and the variety of characters is limited and does not include special characters.
- - But it's false: we have the `IPvFuture` format (define in RFC 3986):
-
-```
-IPvFuture  = "v" 1*HEXDIG "." 1*( unreserved / sub-delims / ":" )
-```
-
- - And we have the IPv6 with `ZoneID` format define in RFC 6874.
+1. The first source of the problems is not specific to URLs: the knowledge of the developers, the developers know neither these formats nor the dangers of using the host field.
+2. Some implementations does not comply with the RFCs:
+     - The `IPvFuture` format is not really know and used, some implementations doesn't comply with RFC to reduce code size or through ignorance.
+     - In URL the IPv6 and `ZoneID` are sometime parsed with a IPv6 parser (comply with RFC 4007 where `ZoneID` format is defined as: `An implementation MAY support other kinds of non-null strings as <zone_id>.`). The RFC 6874 doesn't allow all non-null string characters for security reason and to avoid ambiguities in parsing.
+3. The `host` element URI is an important element and is used for many usages:
+     - Define where web cookie or credentials should be sent
+     - `Host` header in HTTP
+     - *hostname* to identify server by reverse-proxy or in logs
+     - Maybe in some web page
+     - In unsecure code evaluated
 
 ## POC and simplified examples
 
@@ -74,7 +89,7 @@ def get_hostname_and_path(url: str) -> Tuple[str, str]:
     path = parsed_url.path
     return hostname, path
 
-def cookie_validate(cookie_domain: str, cookie_path: str, url: str) -> bool:
+def domain_match(cookie_domain: str, cookie_path: str, url: str) -> bool:
     """
     This function checks for a cookie if you should add it to a request for an URL.
     """
@@ -89,7 +104,7 @@ cookie_domain = "example.com"
 cookie_path = "/"
 
 for url in ("http://example.com/", "http://google.com/", "http://[::1%example.com]/"):
-    print(url, cookie_validate(cookie_domain, cookie_path, url))
+    print(url, domain_match(cookie_domain, cookie_path, url))
 ```
 
 This weak example is vulnerable and produce the following output:
@@ -124,13 +139,25 @@ The [RFC 6265 - HTTP State Management Mechanism](https://www.rfc-editor.org/rfc/
       *  The string is a host name (i.e., not an IP address).
 ```
 
-Okay, so *Host* define as IP address can't set cookie for next request... But clients and servers implements it.
+1. When the *Host* field is an IP address there is no domain matching, so cookie shouldn't be sand... But clients and servers need to works with IP address, so most of them implement the domain matching on IP address.
+2. Domain matching do not consider the port, in python using `urllib.parse.urlparse` the `neloc` contain the port but the `hostname` does not contain the port. Many developpers use it for domain matching, the problem is: the IPv6 `ZoneID` and the `IPvFuture` is no longer identifiable because the `hostname` does not contains brackets (`[` and `]`, it's possible to detect IPv6 with colon: `:`, it's probably not implemented and `IPvFuture` can't be checked).
+
+```python
+>>> from urllib.parse import urlparse
+>>> urlparse("http://test:80/")
+ParseResult(scheme='http', netloc='test:80', path='/', params='', query='', fragment='')
+>>> urlparse("http://test:80/").hostname
+'test'
+>>> urlparse("http://[v45.example.com]:80/").hostname
+'v45.example.com'
+>>> 
+```
 
 ##### Implementations
 
 Now check if we can exploit in few implementations:
 
-1. Python and standard library (**not vulnerable**): Keep square brackets `[]` to validate the host ([code](https://github.com/python/cpython/blob/ddc27f9c385f57db1c227b655ec84dcf097a8976/Lib/http/cookiejar.py#L619)):
+1. Python and the standard library is **not vulnerable**: Keep square brackets `[]` (use `netloc`) to validate the host ([code](https://github.com/python/cpython/blob/ddc27f9c385f57db1c227b655ec84dcf097a8976/Lib/http/cookiejar.py#L619)):
 
 ```python
 cut_port_re = re.compile(r":\d+$", re.ASCII)
@@ -151,7 +178,7 @@ def request_host(request):
     return host.lower()
 ```
 
-2. Go and standard library (**not vulnerable**): check for `:` or `%` in the Host ([code](https://cs.opensource.google/go/go/+/refs/tags/go1.24.0:src/net/http/client.go;l=1020;drc=6b605505047416bbbf513bba1540220a8897f3f6)):
+2. Go and standard library is **not vulnerable**: check for `:` or `%` in the Host ([code](https://cs.opensource.google/go/go/+/refs/tags/go1.24.0:src/net/http/client.go;l=1020;drc=6b605505047416bbbf513bba1540220a8897f3f6)):
 
 ```go
 func isDomainOrSubdomain(sub, parent string) bool {
@@ -174,8 +201,8 @@ func isDomainOrSubdomain(sub, parent string) bool {
 }
 ```
 
-3. python-requests (urllib3, **not vulnerable**): ZoneID is not really supported (when you perform request with ZoneID it try to resolve as a hostame)
-4. Ruby (**not vulnerable**): ZoneID is not supported
+3. python-requests use urllib3 and is **not vulnerable**: ZoneID is not really supported (when you perform request with ZoneID it try to resolve as a hostame)
+4. Ruby is **not vulnerable**: ZoneID is not supported
 
 ### Injection
 
