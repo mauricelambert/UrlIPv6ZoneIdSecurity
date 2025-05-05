@@ -139,7 +139,7 @@ The [RFC 6265 - HTTP State Management Mechanism](https://www.rfc-editor.org/rfc/
       *  The string is a host name (i.e., not an IP address).
 ```
 
-1. When the *Host* field is an IP address there is no domain matching, so cookie shouldn't be sand... But clients and servers need to works with IP address, so most of them implement the domain matching on IP address.
+1. When the *Host* field is an IP address there is no domain matching, the cookie should not be sent... But clients and servers need to works with IP address, so most of them implement the domain matching on IP address.
 2. Domain matching do not consider the port, in python using `urllib.parse.urlparse` the `neloc` contain the port but the `hostname` does not contain the port. Many developpers use it for domain matching, the problem is: the IPv6 `ZoneID` and the `IPvFuture` is no longer identifiable because the `hostname` does not contains brackets (`[` and `]`, it's possible to detect IPv6 with colon: `:`, it's probably not implemented and `IPvFuture` can't be checked).
 
 ```python
